@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ExternalLink, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { ExternalLink, LayoutDashboard, LayoutTemplate, LogOut, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Your page", icon: LayoutDashboard },
+  { href: "/widgets", label: "Widgets", icon: LayoutTemplate },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

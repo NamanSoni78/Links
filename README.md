@@ -1,151 +1,132 @@
+<div align="center">
+
 # 🔗 Links
 
-A free, fast, clean **link-in-bio** platform — a simpler Linktree — built with
-Next.js 16 and designed to run entirely on free tiers
-(**Vercel** + **Turso** + **Resend**), at [links.namansoni.in](https://links.namansoni.in).
+**Your internet homepage — one page for all your links, and embeddable cards for everywhere else.**
+
+A free, fast, clean **link-in-bio** platform and a **widget studio**, built with
+Next.js 16 and designed to run entirely on free tiers.
+
+[Live](https://links.namansoni.in) · [Setup guide](setup.md) · [Report a bug](https://github.com/NamanSoni78/Links/issues)
+
+</div>
+
+---
+
+## What is this?
+
+[Linktree](https://linktr.ee), but yours. Claim a username, get a public page at
+`links.namansoni.in/<you>`, add your links, and share one URL everywhere.
+
+And then something Linktree doesn't do: **widgets** — little cards you design in
+the browser (text, fonts, colors, images, links, motion) and embed anywhere with
+a single line. GitHub profile READMEs, portfolios, docs, email signatures —
+anywhere that renders an image.
+
+<div align="center">
+
+```
+┌─────────────────────┐        ┌──────────────────────┐
+│                     │        │                      │
+│   your links page   │        │   your widget card   │
+│                     │        │                      │
+│   · GitHub          │        │   Naman Soni         │
+│   · Blog            │  ──►   │   shipping small     │
+│   · X / Twitter     │        │   internet things    │
+│   · …               │        │   [ See my work ]    │
+│                     │        │                      │
+└─────────────────────┘        └──────────────────────┘
+     /username                    /api/embed/<slug>
+```
+
+</div>
 
 ## Features
 
-- **Email + password accounts** with **OTP email verification** (Resend, from `no-reply@links.namansoni.in`)
-- **Forgot-password** flow with email codes
-- **Live username claiming** — `links.namansoni.in/you` with instant availability checks, protected against reserved paths (`/admin`, `/sitemap.xml`, …)
-- **Page editor** — display name, bio, tags, and links with **auto-fetched favicons**, drag-to-reorder, undo on delete, auto-titles, and a **live phone preview**
-- **Public profiles** cached at the edge (near-zero function CPU per visit), with per-profile SEO metadata, JSON-LD, dynamic Open Graph images, and a custom 404 that invites claiming the username
-- **Day / night mode**, buttery CSS-only animations, `prefers-reduced-motion` friendly
-- **Admin panel** at `/admin` (HTTP Basic auth via env vars) — user counts, 14-day signup chart, recent users table
-- **Terms of Service & Privacy Policy** written for an indie, no-guarantees service
-- SEO: `sitemap.xml`, `robots.txt`, web manifest, canonical URLs, OG/Twitter cards
+### The link page
 
-## Tech stack
+- **Email + password accounts** with **OTP email verification** and forgot-password reset
+- **Live username claiming** — instant availability checks, reserved-path protection (`/admin`, `/sitemap.xml`, …)
+- **Page editor** — display name, bio, tags, links with **auto-fetched favicons**, drag-to-reorder, undo on delete, and a **live phone preview**
+- **Public profiles** cached at the edge with per-profile SEO metadata, JSON-LD, and dynamic Open Graph images
 
-| Layer     | Choice                                                      |
-| --------- | ----------------------------------------------------------- |
-| Framework | Next.js 16 (App Router) + TypeScript + React 19             |
-| Styling   | Tailwind CSS 4, shadcn/ui primitives, Geist Sans/Mono       |
-| Database  | Turso (libSQL) via `@libsql/client` — free tier             |
-| Email     | Resend — free tier (100 emails/day)                         |
-| Auth      | PBKDF2 password hashing (WebCrypto) + `jose` JWT sessions in httpOnly cookies |
-| Hosting   | Vercel Hobby                                                |
+### The widget studio
 
----
+- **Design once, embed anywhere** — each widget gets a Markdown snippet, an HTML snippet, a raw SVG URL, and a shareable page
+- **Full customization** — 8 font stacks, solid or gradient backgrounds, per-element colors, corner radius, borders, shadows, image with circle/rounded/square crop
+- **Small animations** — fade, rise, pop, float, pulse (CSS only, `prefers-reduced-motion` friendly)
+- **Starter presets** — Minimal, Neon, Terminal, Bold, Paper
+- **Real editor UX** — debounced autosave, ⌘S flush, live preview, per-widget public links with uniqueness + reserved-word checks, duplicate, delete with confirmation
+- **Graceful degradation** — delete a widget and its embeds everywhere quietly switch to an "unavailable" card, never a broken image
 
-## 🚀 Deploy to links.namansoni.in (15 minutes, all free)
+### The platform
 
-### 1 · Turso — the database
+- **Day / night mode**, fluid CSS-only animations
+- **Admin panel** — user/widget/page counts, 14-day signup chart, recent accounts
+- **Terms of Service & Privacy Policy** included
+- **SEO** — sitemap, robots, web manifest, canonical URLs, OG/Twitter cards
 
-1. Create a free account at [turso.tech](https://turso.tech) and create a database (any name, e.g. `links`).
-2. Open **`turso-setup.ipynb`** (included next to this zip) in [Google Colab](https://colab.research.google.com), paste your **database URL** and **auth token**, and run all cells. That creates the schema (4 tables) for you.
-   - Prefer a terminal? `turso db show <name> --url` + `turso db tokens create <name>`, then `npm install && npm run db:init` with the env vars below.
-3. Keep the URL and token handy — they go into Vercel next.
+## Built to cost ~$0
 
-### 2 · Resend — the email
+Every routing decision optimizes for **free-tier survival** (Vercel Hobby's
+4 h/month of active CPU):
 
-1. Create a free account at [resend.com](https://resend.com).
-2. Add your domain **`namansoni.in`** under *Domains* and add the shown **SPF + DKIM** DNS records at your registrar. Wait for *Verified*.
-3. Create an **API key** and keep it handy. Mail will be sent from `no-reply@links.namansoni.in` (configurable via `EMAIL_FROM`).
+- Public pages & widget embeds are **CDN-cached** — visitors don't wake a function
+- Widget SVGs cache for a day at the edge and bust on save via a `?v=` tag
+- Auth, landing, legal pages are fully static
+- Per-request code does nothing heavier than indexed SQLite reads + one native PBKDF2 hash
 
-### 3 · Vercel — the app
+The whole stack is free:
 
-1. Push this project to a GitHub repo (or use the Vercel CLI / drag-and-drop).
-2. In Vercel: **Add New → Project → import the repo**. No build settings needed — defaults work.
-3. Under **Settings → Environment Variables**, add:
+| Layer     | Choice                                          |
+| --------- | ----------------------------------------------- |
+| Framework | Next.js 16 (App Router) · TypeScript · React 19 |
+| Styling   | Tailwind CSS 4 · shadcn/ui · Geist              |
+| Database  | [Turso](https://turso.tech) (libSQL)            |
+| Email     | [Resend](https://resend.com)                    |
+| Auth      | PBKDF2 + JWT sessions (httpOnly cookies)        |
+| Hosting   | Vercel Hobby                                    |
 
-| Variable              | Value                                              |
-| --------------------- | -------------------------------------------------- |
-| `TURSO_DATABASE_URL`  | `libsql://…` from step 1                           |
-| `TURSO_AUTH_TOKEN`    | token from step 1                                  |
-| `RESEND_API_KEY`      | `re_…` from step 2                                 |
-| `EMAIL_FROM`          | `Links <no-reply@links.namansoni.in>` *(optional — this is the default)* |
-| `AUTH_SECRET`         | any long random string (see command below)         |
-| `ADMIN_USERNAME`      | your admin panel username                          |
-| `ADMIN_PASSWORD`      | your admin panel password                          |
-| `NEXT_PUBLIC_SITE_URL`| `https://links.namansoni.in`                       |
-
-Generate an `AUTH_SECRET`:
+## Quick start
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-4. **Deploy.** Then add the domain: **Settings → Domains → Add → `links.namansoni.in`** and follow the DNS instructions (a `CNAME` to `cname.vercel-dns.com`, or the A record `76.76.21.21`).
-
-That's it — signup, email codes, profiles and the admin panel all work now.
-
-### 4 · Admin panel
-
-Visit `https://links.namansoni.in/admin` and sign in with HTTP Basic auth using
-`ADMIN_USERNAME` / `ADMIN_PASSWORD`. It shows total/verified users, claimed
-pages, link counts, a 14-day signup chart, and the latest 25 accounts.
-
----
-
-## 💻 Local development
-
-```bash
+git clone https://github.com/NamanSoni78/Links.git
+cd Links
 npm install
-
-# Local SQLite database (no Turso account needed)
-cp .env.example .env          # defaults already point at a local file
-npm run db:init               # creates db/local.db with the schema
-
-npm run dev                   # http://localhost:3000
+cp .env.example .env    # defaults to a local SQLite file
+npm run db:init         # create the schema
+npm run dev             # → http://localhost:3000
 ```
 
-With no `RESEND_API_KEY` set, OTP codes are **printed to the server console**
-(and returned in API responses) so you can test the full flow without email.
-`demo@links.test / demo-pass-123` style accounts can be created in seconds.
+OTP codes print to the server console in dev — no email account needed to try
+the full flow. To deploy for real (Turso + Resend + Vercel, ~15 minutes),
+see **[setup.md](setup.md)**.
 
-Useful scripts:
-
-```bash
-npm run db:init     # (re)apply the schema — safe, idempotent
-npm run test:e2e    # 35-check end-to-end test suite against the dev server
-```
-
----
-
-## 🧘 How it respects Vercel's free CPU limits
-
-The whole point: **public pages cost (almost) nothing to serve.**
-
-- Public profile pages are rendered once, then served from the **CDN full-route cache**; saving from the editor calls `revalidatePath` for instant updates. Visitors don't invoke serverless functions at all.
-- The sitemap regenerates at most hourly; dynamic OG images are edge-cached for a day per profile.
-- Landing, auth, terms and privacy pages are fully static.
-- Only the dashboard, API routes and admin panel run per-request, and each does nothing heavier than a few indexed SQLite queries plus one PBKDF2 hash (native crypto, ~50 ms).
-
-## 🗂 Project structure
+## Project layout
 
 ```
 src/
-├── app/
-│   ├── page.tsx              # landing
-│   ├── [username]/page.tsx   # public profile (ISR-cached, SEO, JSON-LD)
-│   ├── (auth)/               # login · signup · verify · forgot/reset password
-│   ├── (dash)/               # dashboard editor · settings
-│   ├── admin/                # basic-auth operator panel
-│   ├── terms/ · privacy/     # legal pages
-│   ├── api/                  # auth, profile, links, account, slug-check, og
-│   ├── sitemap.ts · robots.ts · manifest.ts · icon.svg
-│   └── opengraph-image.tsx   # static brand social card (build-time)
-├── components/               # editor, public view, auth forms, chrome
-├── lib/                      # db, auth, otp, mail, slug rules, url helpers
-└── proxy.ts                  # /admin basic-auth gate
+├── app/            # pages: landing · auth · dashboard · widgets · /w/ · admin · legal
+├── components/     # widget builder, page editor, public views, chrome
+├── lib/            # db, auth, otp, mail, widget model + SVG generator
+└── proxy.ts        # /admin basic-auth gate
 scripts/
-├── schema.sql                # single source of truth for the DB schema
-├── init-db.mjs               # apply schema (local file or remote Turso)
-├── e2e.mjs                   # end-to-end test suite
-└── make-notebook.py          # regenerates turso-setup.ipynb from schema.sql
+├── schema.sql      # single source of truth for the DB schema
+├── init-db.mjs     # apply schema locally or to remote Turso
+├── e2e.mjs         # end-to-end test suite
+└── make-notebook.py # regenerates the Colab setup notebook
 ```
 
-## 🔒 Security notes
+## Security
 
-- Passwords: PBKDF2-SHA256, 100k iterations, per-user salt, constant-time compare — via native WebCrypto (no pure-JS bcrypt burn).
-- Sessions: HS256 JWT in an httpOnly, sameSite=lax, Secure cookie; re-checked against the database on every request.
-- OTP codes: stored hashed, 10-minute expiry, 6-attempt limit, 60-second resend cooldown.
-- Login lockout: 10 failed attempts → 15-minute lock.
-- Public profile pages set `rel="noopener noreferrer nofollow"` on user links; JSON-LD is escape-hardened.
+PBKDF2-SHA256 (100k iterations) passwords · hashed OTP codes with expiry,
+attempt limits and resend cooldowns · login lockout · httpOnly JWT sessions
+re-checked against the DB · strictly whitelisted + normalized widget content
+(https-only URLs, length caps) so embeds can't smuggle markup anywhere.
 
-## 📄 License & credits
+## Author
 
-A small project by [Naman Soni](https://github.com/NamanSoni78) — provided as-is,
-with no guarantees. See the in-app Terms of Service for the human-language version.
+**Naman Soni** — [GitHub](https://github.com/NamanSoni78) · [links.namansoni.in](https://links.namansoni.in)
+
+Provided as-is, with no guarantees. See the in-app Terms of Service for the
+human-language version. If you deploy your own instance, a star is appreciated 🌟

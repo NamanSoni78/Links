@@ -68,11 +68,12 @@ export default async function AdminPage() {
         </header>
 
         {/* stats */}
-        <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border shadow-sm sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Total users" value={overview.totals.users} />
           <StatCard label="Verified" value={overview.totals.verified} />
           <StatCard label="Live pages" value={overview.totals.pages} />
           <StatCard label="Links" value={overview.totals.links} />
+          <StatCard label="Widgets" value={overview.totals.widgets} />
         </div>
 
         {/* signup chart */}

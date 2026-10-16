@@ -4,6 +4,7 @@ import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ClaimForm } from "@/components/marketing/claim-form";
 import { HeaderAuth } from "@/components/marketing/header-auth";
+import { SiteFooter } from "@/components/site-footer";
 import { SITE } from "@/lib/site";
 
 const FEATURES = [
@@ -126,16 +127,8 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* ── footer ─────────────────────────────────────────── */}
-      <footer className="border-t border-border/70">
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row sm:px-6">
-          <Logo markClassName="size-5" className="opacity-80 [&>span:last-child]:text-[13px]" />
-          <p className="text-center font-mono text-[11px] tracking-wide text-muted-foreground">
-            © {new Date().getFullYear()} links.namansoni.in — a small project by{" "}
-            {SITE.creator}, run with care.
-          </p>
-        </div>
-      </footer>
+      {/* ── footer (Donate · Made by Naman · GitHub — visible logged out) ── */}
+      <SiteFooter landing containerClassName="max-w-5xl" />
 
       <script
         type="application/ld+json"

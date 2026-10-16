@@ -148,6 +148,7 @@ export async function savePage(userId: string, incoming: PageState): Promise<Sav
 
 export async function deleteAccountCascade(userId: string, slug: string | null): Promise<void> {
   await atomic([
+    { sql: "DELETE FROM widgets WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM links WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM profiles WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
@@ -161,17 +162,18 @@ export async function deleteAccountCascade(userId: string, slug: string | null):
 /* ── admin overview ─────────────────────────────────────────── */
 
 export interface AdminOverview {
-  totals: { users: number; verified: number; pages: number; links: number };
+  totals: { users: number; verified: number; pages: number; links: number; widgets: number };
   recent: { email: string; verified: boolean; slug: string | null; linkCount: number; joinedAt: number }[];
   daily: { day: string; count: number }[];
 }
 
 export async function fetchAdminOverview(): Promise<AdminOverview> {
-  const [users, verified, pages, links] = await Promise.all([
+  const [users, verified, pages, links, widgets] = await Promise.all([
     get<{ c: number }>("SELECT COUNT(*) AS c FROM users"),
     get<{ c: number }>("SELECT COUNT(*) AS c FROM users WHERE email_verified = 1"),
     get<{ c: number }>("SELECT COUNT(*) AS c FROM profiles WHERE slug IS NOT NULL"),
     get<{ c: number }>("SELECT COUNT(*) AS c FROM links"),
+    get<{ c: number }>("SELECT COUNT(*) AS c FROM widgets"),
   ]);
 
   const recent = await all<{
@@ -205,6 +207,7 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
       verified: verified?.c ?? 0,
       pages: pages?.c ?? 0,
       links: links?.c ?? 0,
+      widgets: widgets?.c ?? 0,
     },
     recent: recent.map((r) => ({
       email: r.email,

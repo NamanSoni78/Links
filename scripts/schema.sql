@@ -46,3 +46,14 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_otp_email_purpose ON otp_codes(email, purpose, created_at);
+
+CREATE TABLE IF NOT EXISTS widgets (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slug       TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  data       TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_widgets_user ON widgets(user_id, updated_at);

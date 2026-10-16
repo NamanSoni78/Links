@@ -9,22 +9,30 @@ import { createClient, type Client, type InValue } from "@libsql/client";
 
 const globalForDb = globalThis as unknown as { __linksDb?: Client };
 
-function createDb(): Client {
-  return createClient({
-    url: process.env.TURSO_DATABASE_URL || "file:db/local.db",
-    authToken: process.env.TURSO_AUTH_TOKEN || undefined,
-  });
-}
+let cached: Client | null = null;
 
-export const db = globalForDb.__linksDb ?? createDb();
-if (process.env.NODE_ENV !== "production") globalForDb.__linksDb = db;
+/** Lazy client — created on first query, not at import. This keeps
+ *  `next build`'s page-data collection working when the database isn't
+ *  reachable yet (fresh deploys, missing local file): the error surfaces
+ *  per-query where callers can catch it, instead of crashing the module. */
+function client(): Client {
+  if (cached) return cached;
+  cached =
+    globalForDb.__linksDb ??
+    createClient({
+      url: process.env.TURSO_DATABASE_URL || "file:db/local.db",
+      authToken: process.env.TURSO_AUTH_TOKEN || undefined,
+    });
+  if (process.env.NODE_ENV !== "production") globalForDb.__linksDb = cached;
+  return cached;
+}
 
 /** Run a query, return all rows. */
 export async function all<T = Record<string, unknown>>(
   sql: string,
   args: InValue[] = []
 ): Promise<T[]> {
-  const res = await db.execute({ sql, args });
+  const res = await client().execute({ sql, args });
   return res.rows as unknown as T[];
 }
 
@@ -39,7 +47,7 @@ export async function get<T = Record<string, unknown>>(
 
 /** Run a statement, return affected row count. */
 export async function run(sql: string, args: InValue[] = []): Promise<number> {
-  const res = await db.execute({ sql, args });
+  const res = await client().execute({ sql, args });
   return res.rowsAffected;
 }
 
@@ -47,7 +55,7 @@ export async function run(sql: string, args: InValue[] = []): Promise<number> {
 export async function atomic(
   statements: { sql: string; args?: InValue[] }[]
 ): Promise<void> {
-  await db.batch(
+  await client().batch(
     statements.map((s) => ({ sql: s.sql, args: s.args ?? [] })),
     "write"
   );
