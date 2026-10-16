@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { fetchPublicWidget } from "@/lib/widgets-db";
+import type { WidgetItem } from "@/lib/widgets-db";
+import { fetchPublicWidgetPage } from "@/lib/widgets-db";
+import type { WidgetProfileContext } from "@/lib/widgets";
 import { WidgetCard, WidgetAnimationStyles } from "@/components/widgets/widget-card";
 import { Mark } from "@/components/logo";
+import { SITE, absoluteUrl } from "@/lib/site";
 
 /**
  * Shared renderer for the two public widget routes — the full page
- * (/w/<slug>) and the bare iframe variant (/w/<slug>/embed).
+ * (/<username>/<widget>) and the bare iframe variant (…/embed).
  *
  * Server component: both routes keep `export const revalidate = 3600`
  * and NO searchParams, so the CDN full-route cache absorbs all views —
@@ -26,10 +29,18 @@ function WidgetNotFound() {
   );
 }
 
-export async function WidgetPageView({ slug, embed }: { slug: string; embed: boolean }) {
-  const widget = await fetchPublicWidget(slug);
-
-  if (!widget) return <WidgetNotFound />;
+export async function WidgetPageView({
+  widget,
+  username,
+  profile,
+  embed,
+}: {
+  widget: WidgetItem;
+  username: string;
+  profile: WidgetProfileContext;
+  embed: boolean;
+}) {
+  const pageUrl = absoluteUrl(`/${username}/${widget.slug}`);
 
   return (
     <>
@@ -43,7 +54,7 @@ export async function WidgetPageView({ slug, embed }: { slug: string; embed: boo
             : "flex min-h-dvh flex-col items-center justify-center gap-6 p-6"
         }
       >
-        <WidgetCard data={widget.data} />
+        <WidgetCard data={widget.data} profile={profile} />
 
         {!embed && (
           <Link
@@ -55,6 +66,24 @@ export async function WidgetPageView({ slug, embed }: { slug: string; embed: boo
           </Link>
         )}
       </main>
+
+      {!embed && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "CreativeWork",
+              name: widget.name,
+              url: pageUrl,
+              description: widget.data.content.message || `${widget.name} — a Links widget`,
+              author: { "@type": "Person", name: profile.displayName || username },
+              publisher: { "@type": "Organization", name: SITE.name, url: SITE.url },
+              image: absoluteUrl(`/api/embed/${widget.slug}?v=${(widget.updatedAt % 0xffffff).toString(36)}`),
+            }).replace(/</g, "\\u003c"),
+          }}
+        />
+      )}
     </>
   );
 }
@@ -64,9 +93,7 @@ export function widgetNotFoundMetadata(title: string) {
   return { title, robots: { index: false, follow: false } };
 }
 
-export async function widgetMetadataFor(slug: string) {
-  const widget = await fetchPublicWidget(slug);
-  return widgetNotFoundMetadata(
-    widget ? `${widget.name} — Links widget` : "Widget not found"
-  );
+export async function widgetMetadataFor(username: string, slug: string) {
+  const found = await fetchPublicWidgetPage(username, slug);
+  return widgetNotFoundMetadata(found ? `${found.widget.name} — Links widget` : "Widget not found");
 }

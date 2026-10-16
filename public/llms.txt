@@ -1,0 +1,127 @@
+# Links
+
+> Links (https://links.namansoni.in) is a free, open, no-ads link-in-bio
+> platform: one fast page per person at https://links.namansoni.in/<username>
+> with their links, mini descriptions, contacts and a profile photo —
+> plus embeddable "widgets" (self-contained SVG cards) for GitHub
+> READMEs, portfolios and docs. Made by Naman Soni
+> (https://github.com/NamanSoni78), runs entirely on free tiers.
+
+## Key routes
+
+- `/` — landing page
+- `/<username>` — public profile page (links, contacts, avatar)
+- `/<username>/<widget>` — a public widget page (interactive HTML version)
+- `/<username>/<widget>/embed` — the same widget as a bare, transparent
+  iframe-able page
+- `/api/embed/<widget-slug>` — the widget as a standalone SVG image
+  (this is what Markdown embeds point at)
+- `/widgets` — the signed-in widget builder
+- `/llms.txt` — this file
+
+## Widget embed image — query parameters
+
+`GET https://links.namansoni.in/api/embed/<widget-slug>`
+
+| Parameter | Type / range | Meaning |
+|-----------|--------------|---------|
+| `v`       | short tag    | Cache-buster. Every save mints a new `v`, so embeds refresh within minutes. Purely optional. |
+| `width`   | 120–4096     | Scales the card to this width (height follows the aspect ratio). |
+| `height`  | 120–4096     | Scales the card to this height (width follows). |
+| `width` + `height` | both | Fits the card inside the box, centered on a transparent letterbox. The card is NEVER distorted. |
+
+Default (no params): the card renders at its natural size (456 px wide,
+height depends on content). Responses are CDN-cached for a day, so
+custom resolutions cost the site nothing after their first hit.
+
+Example:
+`https://links.namansoni.in/api/embed/my-widget?v=1hsfq&width=300`
+serves the widget 300 px wide.
+
+Markdown usage:
+`![My widget](https://links.namansoni.in/api/embed/my-widget?v=1hsfq)`
+
+## Making a widget with AI (the interview protocol)
+
+Links can turn a small JSON spec into a finished widget. If a user asks
+you (an AI assistant) to help them make one, follow this contract:
+
+1. Interview them first: 2–4 short questions about the purpose, tone
+   and what to highlight (their links/contacts get pulled in live —
+   don't invent URLs).
+2. Then output a single fenced ```json code block shaped like:
+
+{
+  "name": "short widget name (max 60 chars)",
+  "data": {
+    "content": {
+      "imageUrl": "",                      // optional https:// image URL
+      "imageShape": "circle|rounded|square",
+      "title": "up to 80 chars",
+      "message": "up to 200 chars",
+      "linkLabel": "button text (optional, max 40)",
+      "linkUrl": "https://… (optional)"
+    },
+    "style": {
+      "bgMode": "solid|gradient",
+      "bgColor": "#rrggbb",
+      "bgColor2": "#rrggbb",               // gradient end
+      "gradientAngle": 135,                // 0-360
+      "textColor": "#rrggbb",
+      "accentColor": "#rrggbb",            // button background
+      "borderColor": "#rrggbb",
+      "borderWidth": 0,                    // 0-3
+      "radius": 16,                        // 0-24
+      "shadow": true
+    },
+    "typography": {
+      "font": "sans|serif|mono|trebuchet|verdana|times|impact|comic",
+      "titleSize": 26,                     // 16-40
+      "messageSize": 14,                   // 11-18
+      "bold": true,                        // bold title
+      "uppercase": false,                  // uppercase title
+      "align": "left|center"
+    },
+    "animation": "none|fade|rise|pop|float|pulse",
+    "blocks": {                            // optional sections, in any order
+      "order": ["text", "sites", "contacts"],
+      "texts": [                           // up to 5 animated lines
+        {
+          "text": "up to 120 chars",
+          "size": 15,                      // 11-22
+          "bold": false,
+          "animation": "none|fade|rise|pop|float|pulse|typing",
+          "delayMs": 400,                  // 0-4000, plays after this delay
+          "speedMs": 70,                   // typing: ms per character, 40-140
+          "loop": true                     // typing: retype forever
+        }
+      ],
+      "sites":    { "showFavicon": true, "showDesc": true, "limit": 0 },
+      "contacts": { "showIcon": true, "limit": 0 }
+    }
+  }
+}
+
+Notes:
+- "sites" lists the user's real Links-page links (favicon + mini
+  description included); "contacts" lists their real contacts.
+  `limit: 0` means all (caps: 10 sites, 6 contacts).
+- "typing" animates character-by-character with a blinking cursor,
+  like readme-typing-svg, after `delayMs`.
+- Colors are `#rrggbb`; aim for strong text/background contrast.
+- Everything is sanitized and clamped server-side, but do try to stay
+  inside the stated limits.
+
+3. Import — tell the user to open https://links.namansoni.in/widgets,
+   choose "New widget" → "New with AI" → the "Use any AI" tab, and paste
+   your whole answer. The import fills the widget automatically, gives
+   them a live preview and a one-tap create, and they can customize
+   anything afterwards in the visual editor.
+
+## Policies
+
+- Content is user-provided; each profile page belongs to its owner.
+- Widgets are public by URL but kept out of search indexes.
+- No trackers, no ads, no analytics.
+
+Contact: https://github.com/NamanSoni78

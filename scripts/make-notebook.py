@@ -25,7 +25,7 @@ def code(src: str):
 md(
     """# 🔗 Links — Turso Database Setup
 
-This one-time notebook creates the **Links** database schema (5 tables + indexes) on your free **Turso** database.
+This one-time notebook creates (or upgrades) the **Links** database schema (7 tables + indexes) on your free **Turso** database.
 
 **How to use**
 1. Grab your database credentials — either from the [Turso dashboard](https://app.turso.tech) (database → *Connect*) or with the CLI:
@@ -92,7 +92,7 @@ code(CELL_SCHEMA.replace("__SCHEMA__", SCHEMA_SQL))
 code(
     '''# @title 3 · Verify & copy your Vercel env vars  { display-mode: "form" }
 
-expected = ["users", "profiles", "links", "otp_codes", "widgets"]
+expected = ["users", "profiles", "links", "otp_codes", "widgets", "contacts", "admin_config"]
 body = {
     "requests": [
         {"type": "execute", "stmt": {"sql": "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"}},
@@ -108,7 +108,7 @@ print("Tables found:", ", ".join(tables))
 missing = [t for t in expected if t not in tables]
 if missing:
     raise RuntimeError(f"Missing tables: {missing} — re-run the previous cell.")
-print("All 5 expected tables are present. ✅\\n")
+print("All 7 expected tables are present. ✅\\n")
 
 print("Copy these into Vercel → your project → Settings → Environment Variables:\\n")
 print("-" * 60)

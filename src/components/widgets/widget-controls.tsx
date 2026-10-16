@@ -109,14 +109,17 @@ export function Toggle({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors",
+        "relative h-[22px] w-[38px] shrink-0 rounded-full border p-0 transition-colors",
         checked ? "border-foreground/20 bg-foreground" : "border-border bg-muted"
       )}
     >
       <span
+        aria-hidden
         className={cn(
-          "absolute top-[2px] size-[16px] rounded-full bg-white shadow-sm transition-transform duration-200",
-          checked ? "translate-x-[19px]" : "translate-x-[2px]"
+          // left-0 anchors the knob to the track (buttons center inline
+          // content, so an unanchored absolute span floats mid-track)
+          "absolute top-[2px] left-[2px] block size-[16px] rounded-full bg-white shadow-sm transition-transform duration-200",
+          checked ? "translate-x-[17px]" : "translate-x-0"
         )}
       />
     </button>

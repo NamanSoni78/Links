@@ -14,9 +14,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { LinksEditor, type EditorLink } from "@/components/editor/links-editor";
+import { ContactsEditor, type EditorContact } from "@/components/editor/contacts-editor";
+import { AvatarPicker } from "@/components/editor/avatar-picker";
 import { SlugField, type SlugStatus } from "@/components/editor/slug-field";
 import { LivePreview } from "@/components/editor/live-preview";
 import { LIMITS } from "@/lib/limits";
+import { normalizeContact } from "@/lib/contacts";
 import { normalizeUrlInput } from "@/lib/url";
 import { SITE } from "@/lib/site";
 import type { PageState } from "@/lib/types";
@@ -37,9 +40,27 @@ export function PageEditor({ initial }: { initial: PageState }) {
   const [slugStatus, setSlugStatus] = useState<SlugStatus>("idle");
   const [displayName, setDisplayName] = useState(initial.displayName);
   const [description, setDescription] = useState(initial.description);
+  const [avatar, setAvatar] = useState(initial.avatar);
   const [tagsInput, setTagsInput] = useState(initial.tags.join(", "));
   const [links, setLinks] = useState<EditorLink[]>(
-    initial.links.map((l) => ({ key: l.id, id: l.id, url: l.url, title: l.title }))
+    initial.links.map((l) => ({
+      key: l.id,
+      id: l.id,
+      url: l.url,
+      title: l.title,
+      desc: l.desc,
+      favicon: l.favicon,
+    }))
+  );
+  const [contacts, setContacts] = useState<EditorContact[]>(
+    initial.contacts.map((c) => ({
+      key: c.id,
+      id: c.id,
+      kind: c.kind,
+      label: c.label,
+      value: c.value,
+      icon: c.icon,
+    }))
   );
   const [saving, setSaving] = useState(false);
   const [justClaimed, setJustClaimed] = useState(false);
@@ -72,27 +93,64 @@ export function PageEditor({ initial }: { initial: PageState }) {
       displayName: displayName.trim(),
       description: description.trim(),
       tags,
+      avatar,
       links: links
-        .map((l) => ({ id: l.key, url: normalizeUrlInput(l.url) ?? l.url, title: l.title.trim() || l.url }))
+        .map((l) => ({
+          id: l.key,
+          url: normalizeUrlInput(l.url) ?? l.url,
+          title: l.title.trim() || l.url,
+          desc: l.desc.trim(),
+          favicon: l.favicon,
+        }))
         .filter((l) => l.url),
+      contacts: contacts
+        .filter((c) => c.value.trim())
+        .map((c) => ({
+          id: c.key,
+          kind: c.kind,
+          label: c.label.trim(),
+          value: c.value.trim(),
+          href: "#",
+          icon: c.icon,
+        })),
     }),
-    [slug, displayName, description, tags, links]
+    [slug, displayName, description, tags, avatar, links, contacts]
   );
 
   const buildPayload = () => {
     const cleanLinks = links
       .map((l) => {
         const url = normalizeUrlInput(l.url);
-        return url ? { id: l.id, url, title: l.title.trim().slice(0, LIMITS.linkTitleMax) } : null;
+        return url
+          ? {
+              id: l.id,
+              url,
+              title: l.title.trim().slice(0, LIMITS.linkTitleMax),
+              desc: l.desc.trim().slice(0, LIMITS.linkDescMax),
+              favicon: l.favicon,
+            }
+          : null;
       })
-      .filter((l): l is { id: string; url: string; title: string } => l !== null);
+      .filter((l): l is { id: string; url: string; title: string; desc: string; favicon: string } => l !== null);
+
+    const cleanContacts = contacts
+      .filter((c) => c.value.trim())
+      .map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        label: c.label.trim(),
+        value: c.value.trim(),
+        icon: c.icon,
+      }));
 
     return {
       slug: slug.trim() || null,
       displayName: displayName.trim().slice(0, LIMITS.displayNameMax),
       description: description.trim().slice(0, LIMITS.descriptionMax),
+      avatar,
       tags,
       links: cleanLinks,
+      contacts: cleanContacts,
     };
   };
 
@@ -100,16 +158,26 @@ export function PageEditor({ initial }: { initial: PageState }) {
   const dirty = JSON.stringify(buildPayload()) !== savedRef.current;
 
   const invalidUrls = links.some((l) => l.url.trim() && !normalizeUrlInput(l.url));
+  const contactBad = (c: EditorContact) => {
+    if (!c.value.trim()) return false;
+    const verdict = normalizeContact(c);
+    return !!verdict && !verdict.ok;
+  };
+  const invalidContacts = contacts.some(contactBad);
   const nameMissing = !!slug.trim() && !displayName.trim();
   const slugBad =
     !!slug.trim() && slugStatus !== "free" && slugStatus !== "same" && slugStatus !== "idle";
 
-  const canSave = !saving && !invalidUrls && !nameMissing && !slugBad && dirty;
+  const canSave = !saving && !invalidUrls && !invalidContacts && !nameMissing && !slugBad && dirty;
 
   const save = async () => {
     if (saving) return;
     if (invalidUrls) {
       toast.error("One of your links has an invalid URL.");
+      return;
+    }
+    if (invalidContacts) {
+      toast.error("One of your contacts doesn't look right — check the highlighted row.");
       return;
     }
     if (nameMissing) {
@@ -232,7 +300,7 @@ export function PageEditor({ initial }: { initial: PageState }) {
                 }
                 // Seed the links editor with an empty first row for a warm start.
                 if (links.length === 0) {
-                  setLinks([{ key: "first", id: "", url: "", title: "" }]);
+                  setLinks([{ key: "first", id: "", url: "", title: "", desc: "", favicon: "" }]);
                 }
                 save();
               }}
@@ -330,6 +398,8 @@ export function PageEditor({ initial }: { initial: PageState }) {
             </div>
 
             <div className="grid gap-5">
+              <AvatarPicker avatar={avatar} displayName={displayName} onChange={setAvatar} />
+
               <div>
                 <label htmlFor="display-name" className="mb-1.5 block text-[13px] font-medium">
                   Display name
@@ -407,6 +477,17 @@ export function PageEditor({ initial }: { initial: PageState }) {
               </span>
             </div>
             <LinksEditor links={links} onChange={setLinks} />
+          </section>
+
+          {/* contacts */}
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <Eyebrow>Contact</Eyebrow>
+              <span className="font-mono text-[10.5px] text-muted-foreground/60">
+                optional · shown under links
+              </span>
+            </div>
+            <ContactsEditor contacts={contacts} onChange={setContacts} />
           </section>
 
           {/* username */}

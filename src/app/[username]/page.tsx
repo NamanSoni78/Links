@@ -5,7 +5,7 @@ import { fetchPublicProfile } from "@/lib/profiles";
 import { ProfileView } from "@/components/public-view/profile-view";
 import { PublicTopBar } from "@/components/public-view/public-top-bar";
 import { Mark } from "@/components/logo";
-import { SITE, profileUrl } from "@/lib/site";
+import { SITE, profileUrl, absoluteUrl } from "@/lib/site";
 
 /**
  * Public profile — statically cached by the Full Route Cache and served
@@ -60,6 +60,9 @@ export default async function ProfilePage({ params }: Params) {
   const profile = await fetchPublicProfile(raw.toLowerCase());
   if (!profile) notFound();
 
+  const email = profile.contacts.find((c) => c.kind === "email");
+  const phone = profile.contacts.find((c) => c.kind === "phone");
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "ProfilePage",
@@ -69,6 +72,9 @@ export default async function ProfilePage({ params }: Params) {
       alternateName: `@${profile.slug}`,
       description: profile.description || undefined,
       url: profileUrl(profile.slug),
+      image: absoluteUrl(`/api/og?u=${profile.slug}`),
+      email: email ? email.value : undefined,
+      telephone: phone ? phone.value : undefined,
       sameAs: profile.links.slice(0, 20).map((l) => l.url),
     },
   };

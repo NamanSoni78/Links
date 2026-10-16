@@ -5,11 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
+  Blocks,
   Check,
   Copy,
+  Layers,
+  Link2,
   Loader2,
+  Mail,
   Palette,
+  Plus,
   RefreshCw,
   Share2,
   Trash2,
@@ -45,19 +52,52 @@ import {
   WIDGET_FONTS,
   WIDGET_LIMITS,
   WIDGET_PRESETS,
+  WIDGET_TEXT_ANIMATIONS,
+  type BlockKind,
   type WidgetData,
+  type WidgetProfileContext,
+  type WidgetTextBlock,
 } from "@/lib/widgets";
 import type { WidgetItem } from "@/lib/widgets-db";
 import { cn } from "@/lib/utils";
 
 type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
+const BLOCK_META: Record<BlockKind, { label: string; hint: string }> = {
+  text: { label: "Text", hint: "lines with their own animations — typing included" },
+  sites: { label: "My sites", hint: "your page's links with favicons + mini descriptions" },
+  contacts: { label: "Contacts", hint: "emails, phones and links from your page" },
+};
+
+function newTextBlock(): WidgetTextBlock {
+  return {
+    id: Math.random().toString(36).slice(2, 8),
+    text: "",
+    size: 15,
+    bold: false,
+    animation: "typing",
+    delayMs: 400,
+    speedMs: 70,
+    loop: true,
+  };
+}
+
 /**
- * The widget builder — content, design, typography and motion on the
- * left; a true WYSIWYG preview plus embed snippets on the right.
+ * The widget builder — content, blocks, design, typography and motion
+ * on the left; a true WYSIWYG preview plus embed snippets on the right.
  * Everything autosaves (debounced), ⌘S flushes immediately.
  */
-export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin: string }) {
+export function WidgetEditor({
+  initial,
+  origin,
+  username,
+  profile,
+}: {
+  initial: WidgetItem;
+  origin: string;
+  username: string | null;
+  profile: WidgetProfileContext;
+}) {
   const router = useRouter();
 
   const [name, setName] = useState(initial.name);
@@ -177,9 +217,9 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
   const applyPreset = (key: string) => {
     const preset = WIDGET_PRESETS.find((p) => p.key === key);
     if (!preset) return;
-    setData((d) => ({ ...preset.data, content: d.content }));
+    setData((d) => ({ ...preset.data, content: d.content, blocks: d.blocks }));
     setAnimNonce((n) => n + 1);
-    toast(`“${preset.label}” applied`, { description: "Your text stayed — only the look changed." });
+    toast(`“${preset.label}” applied`, { description: "Your text and blocks stayed — only the look changed." });
   };
 
   const duplicate = async () => {
@@ -219,9 +259,49 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
   const setType = (patch: Partial<WidgetData["typography"]>) =>
     setData((d) => ({ ...d, typography: { ...d.typography, ...patch } }));
 
+  const setBlocks = (patch: Partial<WidgetData["blocks"]>) =>
+    setData((d) => ({ ...d, blocks: { ...d.blocks, ...patch } }));
+
+  const toggleBlock = (kind: BlockKind) =>
+    setBlocks({
+      order: data.blocks.order.includes(kind)
+        ? data.blocks.order.filter((k) => k !== kind)
+        : [...data.blocks.order, kind],
+    });
+
+  const moveBlock = (kind: BlockKind, dir: -1 | 1) => {
+    const order = [...data.blocks.order];
+    const i = order.indexOf(kind);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    setBlocks({ order });
+  };
+
+  const updateText = (id: string, patch: Partial<WidgetTextBlock>) =>
+    setBlocks({ texts: data.blocks.texts.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+
+  const addText = () => {
+    if (data.blocks.texts.length >= WIDGET_LIMITS.textsMax) {
+      toast.error(`Up to ${WIDGET_LIMITS.textsMax} text blocks.`);
+      return;
+    }
+    if (!data.blocks.order.includes("text")) {
+      setBlocks({ texts: [...data.blocks.texts, newTextBlock()], order: [...data.blocks.order, "text"] });
+    } else {
+      setBlocks({ texts: [...data.blocks.texts, newTextBlock()] });
+    }
+  };
+
+  const removeText = (id: string) =>
+    setBlocks({ texts: data.blocks.texts.filter((t) => t.id !== id) });
+
   const lowContrast = contrastRatio(data.style.textColor, effectiveBg(data.style)) < 3;
   const titleLeft = WIDGET_LIMITS.titleMax - data.content.title.length;
   const messageLeft = WIDGET_LIMITS.messageMax - data.content.message.length;
+
+  const siteCount = data.blocks.sites.limit > 0 ? data.blocks.sites.limit : profile.sites.length;
+  const contactCount = data.blocks.contacts.limit > 0 ? data.blocks.contacts.limit : profile.contacts.length;
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -287,7 +367,7 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
       {/* ── body: controls | preview ── */}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-10">
         {/* controls */}
-        <div className="order-2 lg:order-1">
+        <div className="order-2 min-w-0 lg:order-1">
           <Section title="Start from a look" icon={<Palette className="size-3.5" />}>
             <div className="flex flex-wrap gap-2">
               {WIDGET_PRESETS.map((p) => (
@@ -400,6 +480,255 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
               <p className="-mt-1 text-[11.5px] text-destructive">
                 Buttons need an https:// link (or leave it empty — the pill still shows).
               </p>
+            )}
+          </Section>
+
+          {/* ── BLOCKS ── */}
+          <Section title="Blocks" icon={<Blocks className="size-3.5" />}>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">
+              Optional sections under your title — text lines, all your sites, or your
+              contacts. Turn them on, then order them however you like.
+            </p>
+
+            {/* order strip */}
+            <div className="flex flex-col gap-2">
+              {(["text", "sites", "contacts"] as const).map((kind) => {
+                const meta = BLOCK_META[kind];
+                const on = data.blocks.order.includes(kind);
+                const pos = data.blocks.order.indexOf(kind);
+                return (
+                  <div
+                    key={kind}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+                      on ? "border-foreground/20 bg-card" : "border-border bg-muted/30"
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                        {kind === "text" ? <Type className="size-3.5 text-muted-foreground" /> : kind === "sites" ? <Layers className="size-3.5 text-muted-foreground" /> : <Mail className="size-3.5 text-muted-foreground" />}
+                        {meta.label}
+                        {on && data.blocks.order.length > 1 && (
+                          <span className="rounded-full bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+                            #{pos + 1}
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+                        {kind === "sites" && on
+                          ? `${siteCount} site${siteCount === 1 ? "" : "s"} from your page`
+                          : kind === "contacts" && on
+                            ? `${contactCount} contact${contactCount === 1 ? "" : "s"} from your page`
+                            : meta.hint}
+                      </p>
+                    </div>
+                    {on && (
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          aria-label={`Move ${meta.label} earlier`}
+                          disabled={pos <= 0}
+                          onClick={() => moveBlock(kind, -1)}
+                          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+                        >
+                          <ArrowUp className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Move ${meta.label} later`}
+                          disabled={pos === data.blocks.order.length - 1}
+                          onClick={() => moveBlock(kind, 1)}
+                          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+                        >
+                          <ArrowDown className="size-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    <Toggle checked={on} onChange={() => toggleBlock(kind)} label={`Show ${meta.label} block`} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* text block editor */}
+            {data.blocks.order.includes("text") && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Text blocks · {data.blocks.texts.length}/{WIDGET_LIMITS.textsMax}
+                </p>
+                {data.blocks.texts.map((t, i) => (
+                  <div key={t.id} className="space-y-3 rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] text-muted-foreground">#{i + 1}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove text ${i + 1}`}
+                        onClick={() => removeText(t.id)}
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+
+                    <textarea
+                      value={t.text}
+                      rows={2}
+                      maxLength={WIDGET_LIMITS.textMax}
+                      onChange={(e) => updateText(t.id, { text: e.target.value })}
+                      placeholder="Type something… e.g. currently building: links.namansoni.in"
+                      aria-label={`Text block ${i + 1}`}
+                      className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[box-shadow] placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                    />
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <RangeField
+                        label="Size"
+                        value={t.size}
+                        min={WIDGET_LIMITS.textSizeMin}
+                        max={WIDGET_LIMITS.textSizeMax}
+                        onChange={(v) => updateText(t.id, { size: v })}
+                      />
+                      <RangeField
+                        label="Delay"
+                        unit="ms"
+                        value={t.delayMs}
+                        min={0}
+                        max={WIDGET_LIMITS.delayMax}
+                        step={100}
+                        onChange={(v) => updateText(t.id, { delayMs: v })}
+                      />
+                    </div>
+
+                    <div>
+                      <FieldLabel hint={t.animation === "typing" ? "types itself, cursor and all" : undefined}>
+                        Animation
+                      </FieldLabel>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WIDGET_TEXT_ANIMATIONS.map((a) => (
+                          <button
+                            key={a.key}
+                            type="button"
+                            onClick={() => updateText(t.id, { animation: a.key })}
+                            aria-pressed={t.animation === a.key}
+                            className={cn(
+                              "rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                              t.animation === a.key
+                                ? "border-foreground/30 bg-foreground text-background"
+                                : "border-border bg-card text-foreground hover:border-foreground/20 hover:bg-accent"
+                            )}
+                          >
+                            {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {t.animation === "typing" && (
+                      <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 p-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <FieldLabel>Speed</FieldLabel>
+                            <Segmented
+                              ariaLabel="Typing speed"
+                              value={String(t.speedMs)}
+                              onChange={(v) => updateText(t.id, { speedMs: Number(v) })}
+                              options={[
+                                { value: "110", label: "Slow" },
+                                { value: "70", label: "Normal" },
+                                { value: "45", label: "Fast" },
+                              ]}
+                              className="w-full sm:w-48"
+                            />
+                          </div>
+                          <ToggleRow label="Loop" hint="retype forever">
+                            <Toggle checked={t.loop} onChange={(v) => updateText(t.id, { loop: v })} label="Loop typing" />
+                          </ToggleRow>
+                        </div>
+                      </div>
+                    )}
+
+                    <ToggleRow label="Bold">
+                      <Toggle checked={t.bold} onChange={(v) => updateText(t.id, { bold: v })} label="Bold text" />
+                    </ToggleRow>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={addText}
+                  disabled={data.blocks.texts.length >= WIDGET_LIMITS.textsMax}
+                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/50 text-[12.5px] font-medium text-muted-foreground transition-all hover:border-ring/50 hover:text-foreground disabled:opacity-50"
+                >
+                  <Plus className="size-3.5" />
+                  Add text
+                </button>
+              </div>
+            )}
+
+            {/* sites settings */}
+            {data.blocks.order.includes("sites") && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Sites block
+                </p>
+                <ToggleRow label="Show favicons">
+                  <Toggle checked={data.blocks.sites.showFavicon} onChange={(v) => setBlocks({ sites: { ...data.blocks.sites, showFavicon: v } })} label="Show favicons" />
+                </ToggleRow>
+                <ToggleRow label="Show mini descriptions" hint="the ≤50-char lines from your page">
+                  <Toggle checked={data.blocks.sites.showDesc} onChange={(v) => setBlocks({ sites: { ...data.blocks.sites, showDesc: v } })} label="Show descriptions" />
+                </ToggleRow>
+                <div>
+                  <FieldLabel hint="keeps the card tidy">How many</FieldLabel>
+                  <Segmented
+                    ariaLabel="Sites limit"
+                    value={String(data.blocks.sites.limit)}
+                    onChange={(v) => setBlocks({ sites: { ...data.blocks.sites, limit: Number(v) } })}
+                    options={[
+                      { value: "0", label: "All" },
+                      { value: "3", label: "3" },
+                      { value: "5", label: "5" },
+                      { value: "8", label: "8" },
+                    ]}
+                    className="w-full sm:w-64"
+                  />
+                </div>
+                {profile.sites.length === 0 && (
+                  <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                    You have no links yet — add some on the Page editor and they&apos;ll flow in here.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* contacts settings */}
+            {data.blocks.order.includes("contacts") && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Contacts block
+                </p>
+                <ToggleRow label="Show icons">
+                  <Toggle checked={data.blocks.contacts.showIcon} onChange={(v) => setBlocks({ contacts: { ...data.blocks.contacts, showIcon: v } })} label="Show icons" />
+                </ToggleRow>
+                <div>
+                  <FieldLabel>How many</FieldLabel>
+                  <Segmented
+                    ariaLabel="Contacts limit"
+                    value={String(data.blocks.contacts.limit)}
+                    onChange={(v) => setBlocks({ contacts: { ...data.blocks.contacts, limit: Number(v) } })}
+                    options={[
+                      { value: "0", label: "All" },
+                      { value: "2", label: "2" },
+                      { value: "4", label: "4" },
+                    ]}
+                    className="w-full sm:w-56"
+                  />
+                </div>
+                {profile.contacts.length === 0 && (
+                  <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                    No contacts on your page yet — add them in the Page editor&apos;s Contact box.
+                  </p>
+                )}
+              </div>
             )}
           </Section>
 
@@ -523,7 +852,7 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
 
           <Section title="Motion" icon={<Wand2 className="size-3.5" />}>
             <div>
-              <FieldLabel hint="gentle — respects reduced-motion settings">Animation</FieldLabel>
+              <FieldLabel hint="gentle — respects reduced-motion settings">Card animation</FieldLabel>
               <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                 {(["none", "fade", "rise", "pop", "float", "pulse"] as const).map((a) => (
                   <button
@@ -545,12 +874,15 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
                   </button>
                 ))}
               </div>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+                For per-line animations — typing included — use the Text blocks above.
+              </p>
             </div>
           </Section>
 
           <Section title="Widget link" icon={<Share2 className="size-3.5" />}>
             <div>
-              <FieldLabel htmlFor="w-slug" hint="/w/…">
+              <FieldLabel htmlFor="w-slug" hint={`/${username ?? "you"}/…`}>
                 Public link
               </FieldLabel>
               <div
@@ -564,7 +896,7 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
                 )}
               >
                 <span className="border-r border-border bg-muted/50 px-2.5 py-2 font-mono text-[12px] text-muted-foreground">
-                  /w/
+                  /{username ?? "you"}/
                 </span>
                 <input
                   id="w-slug"
@@ -589,14 +921,14 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
                     ? "Free — updates with your next save. Old embed links keep working for a day."
                     : slug !== saved.slug
                       ? "Checking…"
-                      : "Anyone can view the widget at this link."}
+                      : "Anyone can view the widget at this link. If a name is taken we suggest name-1."}
               </p>
             </div>
           </Section>
         </div>
 
         {/* preview + embed */}
-        <div className="order-1 lg:order-2">
+        <div className="order-1 min-w-0 lg:order-2">
           <div className="lg:sticky lg:top-8 space-y-5">
             <div
               className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border p-5"
@@ -605,13 +937,20 @@ export function WidgetEditor({ initial, origin }: { initial: WidgetItem; origin:
                 backgroundSize: "16px 16px",
               }}
             >
-              <WidgetCard key={`${data.animation}-${animNonce}`} data={data} className="shadow-lg" />
+              <WidgetCard key={`${data.animation}-${animNonce}`} data={data} profile={profile} className="shadow-lg" />
             </div>
 
-            <EmbedPanel slug={saved.slug} name={saved.name} updatedAt={saved.updatedAt} dirty={dirty || slugSavable} origin={origin} />
+            <EmbedPanel
+              slug={saved.slug}
+              name={saved.name}
+              updatedAt={saved.updatedAt}
+              dirty={dirty || slugSavable}
+              origin={origin}
+              username={username}
+            />
 
             <a
-              href={`/w/${saved.slug}`}
+              href={username ? `/${username}/${saved.slug}` : "#"}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-accent"

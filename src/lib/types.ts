@@ -17,6 +17,7 @@ export interface ProfileRow {
   display_name: string;
   description: string;
   tags: string;
+  avatar: string;
   created_at: number;
   updated_at: number;
 }
@@ -26,6 +27,21 @@ export interface LinkRow {
   user_id: string;
   url: string;
   title: string;
+  description: string;
+  favicon: string;
+  position: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ContactRow {
+  id: string;
+  user_id: string;
+  kind: string;
+  label: string;
+  value: string;
+  href: string;
+  icon: string;
   position: number;
   created_at: number;
   updated_at: number;
@@ -54,6 +70,23 @@ export interface PublicLink {
   id: string;
   url: string;
   title: string;
+  /** optional ≤50-char mini description shown under the host */
+  desc: string;
+  /** optional custom favicon (data URL) — "" = fetched favicon */
+  favicon: string;
+}
+
+export type ContactKind = "email" | "phone" | "link";
+
+export interface PublicContact {
+  id: string;
+  kind: ContactKind;
+  label: string;
+  value: string;
+  /** mailto:/tel:/https — resolved from kind + value */
+  href: string;
+  /** custom icon (data URL) — "" = built-in glyph */
+  icon: string;
 }
 
 export interface PublicProfile {
@@ -61,7 +94,10 @@ export interface PublicProfile {
   displayName: string;
   description: string;
   tags: string[];
+  /** circular profile photo (data URL) — "" = initials */
+  avatar: string;
   links: PublicLink[];
+  contacts: PublicContact[];
 }
 
 export interface PageState {
@@ -70,5 +106,7 @@ export interface PageState {
   displayName: string;
   description: string;
   tags: string[];
+  avatar: string;
   links: PublicLink[];
+  contacts: PublicContact[];
 }

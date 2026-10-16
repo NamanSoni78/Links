@@ -22,9 +22,73 @@ export type FontKey =
   | "comic";
 
 export type AnimationKey = "none" | "fade" | "rise" | "pop" | "float" | "pulse";
+export type TextAnimKey = AnimationKey | "typing";
 export type ImageShape = "circle" | "rounded" | "square";
 export type BgMode = "solid" | "gradient";
 export type Align = "left" | "center";
+
+/** Optional blocks rendered under the header (title/message/button),
+ *  in the user's chosen order — all of them optional. */
+export type BlockKind = "text" | "sites" | "contacts";
+
+export interface WidgetTextBlock {
+  id: string;
+  text: string;
+  size: number;
+  bold: boolean;
+  animation: TextAnimKey;
+  /** start delay in ms — the block waits before playing */
+  delayMs: number;
+  /** typing only — ms per character */
+  speedMs: number;
+  /** typing only — restart the cycle forever */
+  loop: boolean;
+}
+
+export interface WidgetSitesBlock {
+  showFavicon: boolean;
+  showDesc: boolean;
+  /** 0 = all (up to the hard cap) */
+  limit: number;
+}
+
+export interface WidgetContactsBlock {
+  showIcon: boolean;
+  /** 0 = all (up to the hard cap) */
+  limit: number;
+}
+
+export interface WidgetBlocks {
+  /** enabled blocks, in render order */
+  order: BlockKind[];
+  texts: WidgetTextBlock[];
+  sites: WidgetSitesBlock;
+  contacts: WidgetContactsBlock;
+}
+
+/** The owner's live profile data, resolved at render time so a
+ *  widget's "sites" / "contacts" blocks always mirror the page. */
+export interface WidgetSiteItem {
+  url: string;
+  title: string;
+  desc: string;
+  /** custom favicon override (data URL) — "" uses the fetched one */
+  favicon: string;
+}
+export interface WidgetContactItem {
+  kind: string;
+  label: string;
+  value: string;
+  href: string;
+  /** custom icon (data URL) — "" falls back to a glyph */
+  icon: string;
+}
+export interface WidgetProfileContext {
+  displayName: string;
+  bio: string;
+  sites: WidgetSiteItem[];
+  contacts: WidgetContactItem[];
+}
 
 export interface WidgetData {
   content: {
@@ -56,6 +120,7 @@ export interface WidgetData {
     align: Align;
   };
   animation: AnimationKey;
+  blocks: WidgetBlocks;
 }
 
 /* ── fonts (system stacks only — they render inside SVG images,
@@ -101,7 +166,24 @@ export const WIDGET_LIMITS = {
   borderMax: 3,
   /** free-tier friendly cap per account */
   perUser: 20,
+  /* ── blocks ── */
+  textMax: 120,
+  textsMax: 5,
+  textSizeMin: 11,
+  textSizeMax: 22,
+  delayMax: 4000,
+  speedMin: 40,
+  speedMax: 140,
+  sitesCap: 10,
+  contactsCap: 6,
 } as const;
+
+export const DEFAULT_BLOCKS: WidgetBlocks = {
+  order: [],
+  texts: [],
+  sites: { showFavicon: true, showDesc: true, limit: 0 },
+  contacts: { showIcon: true, limit: 0 },
+};
 
 /* ── defaults & presets ──────────────────────────────────────── */
 
@@ -135,6 +217,7 @@ export const DEFAULT_WIDGET: WidgetData = {
     align: "left",
   },
   animation: "fade",
+  blocks: { ...DEFAULT_BLOCKS, order: [], texts: [] },
 };
 
 export type PresetKey = "minimal" | "neon" | "terminal" | "bold" | "paper";
@@ -151,11 +234,13 @@ const preset = (patch: {
   style?: Partial<WidgetData["style"]>;
   typography?: Partial<WidgetData["typography"]>;
   animation?: AnimationKey;
+  blocks?: Partial<WidgetBlocks>;
 }): WidgetData => ({
   content: { ...DEFAULT_WIDGET.content, ...patch.content },
   style: { ...DEFAULT_WIDGET.style, ...patch.style },
   typography: { ...DEFAULT_WIDGET.typography, ...patch.typography },
   animation: patch.animation ?? DEFAULT_WIDGET.animation,
+  blocks: { ...DEFAULT_BLOCKS, ...patch.blocks },
 });
 
 /** Built-in starter designs — each tuned to read well in both
@@ -287,6 +372,68 @@ export function animationClass(key: string): string {
   return key !== "none" && allowed ? `wa-${key}` : "";
 }
 
+/* ── typing animation (readme-typing-svg style) ───────────────────
+ *
+ * Generates one self-contained CSS snippet per text block: every
+ * character gets its own keyframes (discrete 0→1 opacity step at its
+ * reveal time) so the text "types itself" after an optional delay,
+ * optionally looping forever. The SAME snippet is mounted by the
+ * React card (editor preview + /embed page) and the SVG generator,
+ * so previews are honest. CSS animations inside SVG images run on
+ * GitHub READMEs, in emails-as-img, everywhere SVG renders.
+ */
+
+const CURSOR_HOLD_MS = 2200; // how long the finished line sits before a loop restarts
+
+export interface TypingSpec {
+  charCount: number;
+  delayMs: number;
+  speedMs: number;
+  loop: boolean;
+}
+
+export function typingCycleMs(spec: TypingSpec): number {
+  const typeMs = Math.max(0, spec.charCount) * spec.speedMs;
+  return spec.loop ? spec.delayMs + typeMs + CURSOR_HOLD_MS : Math.max(1, spec.delayMs + typeMs);
+}
+
+/** CSS classes: `.wt-{uid}-{i}` per char, `.wtc-{uid}` cursor blink. */
+export function typingCss(uid: string, spec: TypingSpec): string {
+  const { charCount, delayMs, speedMs, loop } = spec;
+  const cycle = typingCycleMs(spec);
+  const rules: string[] = [];
+  const pct = (ms: number) => Math.min(100, (ms / cycle) * 100);
+
+  for (let i = 0; i < charCount; i++) {
+    const at = pct(delayMs + i * speedMs);
+    const to = Math.min(100, at + 0.01);
+    rules.push(
+      loop
+        ? `@keyframes wt-${uid}-${i}{0%,${at.toFixed(3)}%{opacity:0}${to.toFixed(3)}%,99.9%{opacity:1}100%{opacity:0}}.wt-${uid}-${i}{animation:wt-${uid}-${i} ${cycle}ms steps(1,end) infinite}`
+        : `@keyframes wt-${uid}-${i}{0%,${at.toFixed(3)}%{opacity:0}${to.toFixed(3)}%,100%{opacity:1}}.wt-${uid}-${i}{animation:wt-${uid}-${i} ${cycle}ms steps(1,end) 1 both}`
+    );
+  }
+  rules.push(
+    `@keyframes wtc-${uid}{0%,100%{opacity:1}50%{opacity:0}}.wtc-${uid}{animation:wtc-${uid} 1.06s steps(1,end) infinite}`
+  );
+  // motion-sensitive viewers just see the finished line
+  rules.push(
+    `@media (prefers-reduced-motion: reduce){${Array.from({ length: charCount }, (_, i) => `.wt-${uid}-${i}`).join(",")},.wtc-${uid}{animation:none}}`
+  );
+  return rules.join("");
+}
+
+/** Animation list offered for individual text blocks. */
+export const WIDGET_TEXT_ANIMATIONS: readonly { key: TextAnimKey; label: string }[] = [
+  { key: "none", label: "None" },
+  { key: "fade", label: "Fade" },
+  { key: "rise", label: "Rise" },
+  { key: "pop", label: "Pop" },
+  { key: "float", label: "Float" },
+  { key: "pulse", label: "Pulse" },
+  { key: "typing", label: "Typing" },
+];
+
 /* ── colors ──────────────────────────────────────────────────── */
 
 const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -359,6 +506,55 @@ const pick = <T extends string>(raw: unknown, allowed: readonly T[], fallback: T
   (typeof raw === "string" && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback);
 
 const FONT_KEYS = WIDGET_FONTS.map((f) => f.key);
+const BLOCK_KINDS: readonly BlockKind[] = ["text", "sites", "contacts"];
+const TEXT_ANIM_KEYS = WIDGET_TEXT_ANIMATIONS.map((a) => a.key);
+
+function normalizeTextBlock(raw: unknown): WidgetTextBlock {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const str = (v: unknown, max: number): string =>
+    (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, "") : "").slice(0, max);
+  const text = str(b.text, WIDGET_LIMITS.textMax).trim();
+  return {
+    id: str(b.id, 24) || Math.random().toString(36).slice(2, 8),
+    text,
+    size: clamp(b.size, WIDGET_LIMITS.textSizeMin, WIDGET_LIMITS.textSizeMax, 14),
+    bold: typeof b.bold === "boolean" ? b.bold : false,
+    animation: (typeof b.animation === "string" && (TEXT_ANIM_KEYS as string[]).includes(b.animation)
+      ? (b.animation as TextAnimKey)
+      : "none"),
+    delayMs: clamp(b.delayMs, 0, WIDGET_LIMITS.delayMax, 0),
+    speedMs: clamp(b.speedMs, WIDGET_LIMITS.speedMin, WIDGET_LIMITS.speedMax, 70),
+    loop: typeof b.loop === "boolean" ? b.loop : true,
+  };
+}
+
+function normalizeBlocks(raw: unknown): WidgetBlocks {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const order = Array.isArray(r.order)
+    ? (r.order.filter(
+        (k): k is BlockKind => typeof k === "string" && (BLOCK_KINDS as string[]).includes(k)
+      ) as BlockKind[])
+    : [];
+  const texts = (Array.isArray(r.texts) ? r.texts : [])
+    .map(normalizeTextBlock)
+    .filter((t) => t.text.length > 0)
+    .slice(0, WIDGET_LIMITS.textsMax);
+  const s = (r.sites ?? {}) as Record<string, unknown>;
+  const c = (r.contacts ?? {}) as Record<string, unknown>;
+  return {
+    order,
+    texts,
+    sites: {
+      showFavicon: typeof s.showFavicon === "boolean" ? s.showFavicon : true,
+      showDesc: typeof s.showDesc === "boolean" ? s.showDesc : true,
+      limit: clamp(s.limit, 0, WIDGET_LIMITS.sitesCap, 0),
+    },
+    contacts: {
+      showIcon: typeof c.showIcon === "boolean" ? c.showIcon : true,
+      limit: clamp(c.limit, 0, WIDGET_LIMITS.contactsCap, 0),
+    },
+  };
+}
 
 /**
  * Coerces anything (partial client payloads, stale DB rows) into a
@@ -411,6 +607,7 @@ export function normalizeWidgetData(raw: unknown): WidgetData {
       WIDGET_ANIMATIONS.map((a) => a.key),
       "none"
     ),
+    blocks: normalizeBlocks(r.blocks),
   };
 }
 

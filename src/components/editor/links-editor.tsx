@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { FaviconImg } from "@/components/favicon-img";
+import { IconUploadButton } from "@/components/editor/icon-upload-button";
 import { normalizeUrlInput, titleFromUrl } from "@/lib/url";
 import { LIMITS } from "@/lib/limits";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,8 @@ export interface EditorLink {
   id: string; // existing id ("" for new)
   url: string;
   title: string;
+  desc: string;
+  favicon: string;
 }
 
 /**
@@ -36,7 +39,14 @@ export function LinksEditor({
     }
     onChange([
       ...links,
-      { key: `n${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, id: "", url: "", title: "" },
+      {
+        key: `n${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: "",
+        url: "",
+        title: "",
+        desc: "",
+        favicon: "",
+      },
     ]);
   };
 
@@ -165,9 +175,14 @@ export function LinksEditor({
                 </button>
               </div>
 
-              {/* favicon */}
+              {/* favicon — click to upload a custom one */}
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40">
-                <FaviconImg url={normalizeUrlInput(link.url) ?? link.url} size={18} />
+                <IconUploadButton
+                  icon={link.favicon}
+                  onChange={(v) => update(link.key, { favicon: v })}
+                  ariaLabel={`Custom icon for link ${i + 1}`}
+                  fallback={<FaviconImg url={normalizeUrlInput(link.url) ?? link.url} size={16} />}
+                />
               </div>
 
               {/* title */}
@@ -195,10 +210,18 @@ export function LinksEditor({
                     urlError ? "border-destructive/60 focus:border-destructive" : "border-border focus:border-ring"
                   )}
                 />
-                {urlError && (
+                {urlError ? (
                   <p className="mt-1 text-[11.5px] text-destructive" role="alert">
                     {urlError}
                   </p>
+                ) : (
+                  <input
+                    value={link.desc}
+                    onChange={(e) => update(link.key, { desc: e.target.value.slice(0, LIMITS.linkDescMax) })}
+                    placeholder="Mini description (optional) — shows under the link"
+                    aria-label={`Link ${i + 1} mini description`}
+                    className="mt-1.5 h-8 w-full rounded-lg border border-transparent bg-transparent px-1 text-[12px] text-muted-foreground outline-none transition-colors placeholder:text-muted-foreground/45 focus:border-border focus:bg-background focus:px-3 focus:text-foreground"
+                  />
                 )}
               </div>
 

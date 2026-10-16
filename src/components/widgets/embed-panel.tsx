@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { widgetVersion } from "@/lib/widgets";
 
@@ -9,36 +9,62 @@ import { widgetVersion } from "@/lib/widgets";
  * Embed snippets for a saved widget: Markdown (GitHub READMEs),
  * HTML iframe (clickable, interactive), direct image URL, page link.
  * Uses the last-saved slug + version so copied URLs are always live.
+ *
+ * The size control appends ?width / ?height to the image URL — the
+ * default (auto) is the card's natural resolution, aspect ratio is
+ * preserved for custom sizes.
  */
+const SIZE_MIN = 120;
+const SIZE_MAX = 4096;
+
 export function EmbedPanel({
   slug,
   name,
   updatedAt,
   dirty,
   origin,
+  username,
 }: {
   slug: string;
   name: string;
   updatedAt: number;
   dirty: boolean;
   origin: string;
+  username: string | null;
 }) {
   const [tab, setTab] = useState<"md" | "html" | "img" | "link">("md");
   const [copied, setCopied] = useState(false);
+  const [sizeMode, setSizeMode] = useState<"auto" | "custom">("auto");
+  const [w, setW] = useState("");
+  const [h, setH] = useState("");
 
   const v = widgetVersion(updatedAt);
+  const userPath = username ?? "you";
+
+  const wNum = Number(w);
+  const hNum = Number(h);
+  const wValid = w === "" || (Number.isInteger(wNum) && wNum >= SIZE_MIN && wNum <= SIZE_MAX);
+  const hValid = h === "" || (Number.isInteger(hNum) && hNum >= SIZE_MIN && hNum <= SIZE_MAX);
+  const sizeValid = sizeMode === "auto" || (wValid && hValid && (w !== "" || h !== ""));
+
   const snippets = useMemo(() => {
     if (!origin) return null;
-    const img = `${origin}/api/embed/${slug}?v=${v}`;
-    const page = `${origin}/w/${slug}`;
+    const params = new URLSearchParams({ v });
+    if (sizeMode === "custom") {
+      if (w !== "" && wValid) params.set("width", w);
+      if (h !== "" && hValid) params.set("height", h);
+    }
+    const img = `${origin}/api/embed/${slug}?${params.toString()}`;
+    const page = `${origin}/${userPath}/${slug}`;
     const safeName = name.replace(/[[\]]/g, "");
+    const customW = sizeMode === "custom" && w !== "" && wValid ? Number(w) : 456;
     return {
       md: `![${safeName}](${img})`,
-      html: `<a href="${page}" target="_blank" rel="noopener">\n  <img src="${img}" alt="${safeName}" width="456" />\n</a>\n<!-- interactive version: <iframe src="${page}/embed" width="470" height="380" style="border:0;border-radius:14px" loading="lazy" title="${safeName}"></iframe> -->`,
+      html: `<a href="${page}" target="_blank" rel="noopener">\n  <img src="${img}" alt="${safeName}" width="${customW}" />\n</a>\n<!-- interactive version: <iframe src="${page}/embed" width="470" height="380" style="border:0;border-radius:14px" loading="lazy" title="${safeName}"></iframe> -->`,
       img,
       link: page,
     };
-  }, [origin, slug, v, name]);
+  }, [origin, slug, v, name, userPath, sizeMode, w, h, wValid, hValid]);
 
   const copy = async (text: string) => {
     try {
@@ -105,8 +131,71 @@ export function EmbedPanel({
         ))}
       </div>
 
-      <div className="p-3 pt-2">
-        {snippets ? (
+      <div className="space-y-3 p-3 pt-2">
+        {/* custom resolution */}
+        <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground">
+              <Maximize2 className="size-3" />
+              Size
+            </span>
+            <div className="flex gap-1">
+              {(["auto", "custom"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSizeMode(m)}
+                  aria-pressed={sizeMode === m}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[11.5px] font-medium capitalize transition-colors",
+                    sizeMode === m
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {sizeMode === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={w}
+                  onChange={(e) => setW(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="width"
+                  aria-label="Custom width"
+                  inputMode="numeric"
+                  className={cn(
+                    "h-7 w-[74px] rounded-md border bg-card px-2 font-mono text-[11.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30",
+                    wValid ? "border-border" : "border-destructive"
+                  )}
+                />
+                <span className="text-[11px] text-muted-foreground">×</span>
+                <input
+                  value={h}
+                  onChange={(e) => setH(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="height"
+                  aria-label="Custom height"
+                  inputMode="numeric"
+                  className={cn(
+                    "h-7 w-[74px] rounded-md border bg-card px-2 font-mono text-[11.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30",
+                    hValid ? "border-border" : "border-destructive"
+                  )}
+                />
+                <span className="font-mono text-[10px] text-muted-foreground/70">px</span>
+              </div>
+            )}
+          </div>
+          {sizeMode === "custom" && (
+            <p className={cn("mt-1.5 text-[10.5px] leading-relaxed", sizeValid ? "text-muted-foreground" : "text-destructive")}>
+              {sizeValid
+                ? "Aspect ratio is kept — one value scales, both fit the card inside the box (120–4096)."
+                : `Enter whole pixels between ${SIZE_MIN} and ${SIZE_MAX} (at least one).`}
+            </p>
+          )}
+        </div>
+
+        {snippets && sizeValid ? (
           <>
             <div className="group relative">
               <pre
@@ -133,8 +222,12 @@ export function EmbedPanel({
                 {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
               </button>
             </div>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">{note[tab]}</p>
+            <p className="text-[11.5px] leading-relaxed text-muted-foreground">{note[tab]}</p>
           </>
+        ) : snippets ? (
+          <div className="flex h-16 items-center justify-center rounded-lg bg-muted/50 text-[12px] text-destructive">
+            Fix the size values to see snippets.
+          </div>
         ) : (
           <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
         )}

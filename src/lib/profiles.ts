@@ -8,10 +8,13 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { all, get, atomic } from "./db";
-import type { LinkRow, PageState, ProfileRow, PublicProfile } from "./types";
+import type { ContactRow, LinkRow, PageState, ProfileRow, PublicContact, PublicProfile } from "./types";
 import { validateSlug } from "./slug";
 import { normalizeUrlInput, titleFromUrl } from "./url";
 import { LIMITS } from "./api";
+import { cleanImageDataUrl, AVATAR_MAX_CHARS, ICON_MAX_CHARS } from "./images";
+import { normalizeContact } from "./contacts";
+import type { WidgetProfileContext } from "./widgets";
 
 function safeParseTags(raw: string): string[] {
   try {
@@ -22,22 +25,84 @@ function safeParseTags(raw: string): string[] {
   }
 }
 
+const to_public_contact = (r: ContactRow): PublicContact => ({
+  id: r.id,
+  kind: (r.kind === "email" || r.kind === "phone" ? r.kind : "link"),
+  label: r.label,
+  value: r.value,
+  href: r.href,
+  icon: r.icon,
+});
+
+const to_public_link = (l: LinkRow) => ({
+  id: l.id,
+  url: l.url,
+  title: l.title,
+  desc: l.description,
+  favicon: l.favicon,
+});
+
 /* ── public page (used by /[username] + sitemap) ────────────── */
 
 export async function fetchPublicProfile(slug: string): Promise<PublicProfile | null> {
   const profile = await get<ProfileRow>("SELECT * FROM profiles WHERE slug = ?", [slug]);
   if (!profile || !profile.slug) return null;
-  const links = await all<LinkRow>(
-    "SELECT id, url, title FROM links WHERE user_id = ? ORDER BY position ASC",
-    [profile.user_id]
-  );
+  const [links, contacts] = await Promise.all([
+    all<LinkRow>(
+      "SELECT id, url, title, description, favicon FROM links WHERE user_id = ? ORDER BY position ASC",
+      [profile.user_id]
+    ),
+    all<ContactRow>(
+      "SELECT id, kind, label, value, href, icon FROM contacts WHERE user_id = ? ORDER BY position ASC",
+      [profile.user_id]
+    ),
+  ]);
   return {
     slug: profile.slug,
     displayName: profile.display_name,
     description: profile.description,
     tags: safeParseTags(profile.tags),
-    links: links.map((l) => ({ id: l.id, url: l.url, title: l.title })),
+    avatar: profile.avatar,
+    links: links.map(to_public_link),
+    contacts: contacts.map(to_public_contact),
   };
+}
+
+/** Compact owner context for widget rendering (blocks + AI prompts). */
+export async function fetchWidgetProfileContext(userId: string): Promise<WidgetProfileContext> {
+  const [profile, links, contacts] = await Promise.all([
+    get<ProfileRow>("SELECT display_name, description FROM profiles WHERE user_id = ?", [userId]),
+    all<LinkRow>(
+      "SELECT url, title, description, favicon FROM links WHERE user_id = ? ORDER BY position ASC",
+      [userId]
+    ),
+    all<ContactRow>(
+      "SELECT kind, label, value, href, icon FROM contacts WHERE user_id = ? ORDER BY position ASC",
+      [userId]
+    ),
+  ]);
+  return {
+    displayName: profile?.display_name ?? "",
+    bio: profile?.description ?? "",
+    sites: links.map((l) => ({ url: l.url, title: l.title, desc: l.description, favicon: l.favicon })),
+    contacts: contacts.map((c) => ({
+      kind: c.kind,
+      label: c.label,
+      value: c.value,
+      href: c.href,
+      icon: c.icon,
+    })),
+  };
+}
+
+/** Same context for any user by slug (widget pages / embeds). */
+export async function fetchWidgetProfileContextBySlug(
+  slug: string
+): Promise<{ userId: string; context: WidgetProfileContext } | null> {
+  const profile = await get<ProfileRow>("SELECT user_id, display_name, description FROM profiles WHERE slug = ?", [slug]);
+  if (!profile) return null;
+  const context = await fetchWidgetProfileContext(profile.user_id);
+  return { userId: profile.user_id, context };
 }
 
 /* ── dashboard state ────────────────────────────────────────── */
@@ -51,17 +116,25 @@ export async function getOwnedSlug(userId: string): Promise<string | null> {
 }
 
 export async function fetchPageState(userId: string): Promise<PageState> {
-  const profile = await get<ProfileRow>("SELECT * FROM profiles WHERE user_id = ?", [userId]);
-  const links = await all<LinkRow>(
-    "SELECT id, url, title FROM links WHERE user_id = ? ORDER BY position ASC",
-    [userId]
-  );
+  const [profile, links, contacts] = await Promise.all([
+    get<ProfileRow>("SELECT * FROM profiles WHERE user_id = ?", [userId]),
+    all<LinkRow>(
+      "SELECT id, url, title, description, favicon FROM links WHERE user_id = ? ORDER BY position ASC",
+      [userId]
+    ),
+    all<ContactRow>(
+      "SELECT id, kind, label, value, href, icon FROM contacts WHERE user_id = ? ORDER BY position ASC",
+      [userId]
+    ),
+  ]);
   return {
     slug: profile?.slug ?? null,
     displayName: profile?.display_name ?? "",
     description: profile?.description ?? "",
     tags: profile ? safeParseTags(profile.tags) : [],
-    links: links.map((l) => ({ id: l.id, url: l.url, title: l.title })),
+    avatar: profile?.avatar ?? "",
+    links: links.map(to_public_link),
+    contacts: contacts.map(to_public_contact),
   };
 }
 
@@ -94,38 +167,64 @@ export async function savePage(userId: string, incoming: PageState): Promise<Sav
     return { ok: false, error: "Your page needs a display name.", status: 422 };
   }
   const description = (incoming.description || "").trim().slice(0, LIMITS.descriptionMax);
+  const avatar = cleanImageDataUrl(incoming.avatar, AVATAR_MAX_CHARS);
   const tags = incoming.tags
     .map((t) => t.trim().slice(0, LIMITS.tagMax))
     .filter(Boolean)
     .slice(0, LIMITS.tagsMax);
 
-  // ── links ──
-  const cleanLinks: { id: string; url: string; title: string }[] = [];
+  // ── links (url + title + optional ≤50-char description + optional custom favicon) ──
+  // Ids are always generated server-side: client ids are only React keys,
+  // and trusting them here let two users collide on links.id ("l1" …).
+  const cleanLinks: { id: string; url: string; title: string; desc: string; favicon: string }[] = [];
   for (const l of incoming.links.slice(0, LIMITS.linksMax)) {
     const url = normalizeUrlInput(l.url || "");
     if (!url) continue;
     const title = (l.title || "").trim().slice(0, LIMITS.linkTitleMax) || titleFromUrl(url);
-    cleanLinks.push({ id: l.id && l.id.length < 40 ? l.id : randomUUID(), url, title });
+    cleanLinks.push({
+      id: randomUUID(),
+      url,
+      title,
+      desc: (l.desc || "").trim().slice(0, LIMITS.linkDescMax),
+      favicon: cleanImageDataUrl(l.favicon, ICON_MAX_CHARS),
+    });
+  }
+
+  // ── contacts (validated; the whole section is optional) ──
+  const cleanContacts: { id: string; kind: string; label: string; value: string; href: string; icon: string }[] = [];
+  for (const c of incoming.contacts.slice(0, LIMITS.contactsMax)) {
+    const verdict = normalizeContact({ id: c.id, kind: c.kind, label: c.label, value: c.value, icon: c.icon });
+    if (!verdict) continue;
+    if (!verdict.ok) return { ok: false, error: verdict.error, status: 422 };
+    // fresh server id — client ids are display keys, never primary keys
+    cleanContacts.push({ ...verdict.contact, id: randomUUID() });
   }
 
   // ── atomic write ──
   const stmts: { sql: string; args: (string | number | null)[] }[] = [];
   if (existing) {
     stmts.push({
-      sql: "UPDATE profiles SET slug = ?, display_name = ?, description = ?, tags = ?, updated_at = ? WHERE user_id = ?",
-      args: [slug, displayName, description, JSON.stringify(tags), now, userId],
+      sql: "UPDATE profiles SET slug = ?, display_name = ?, description = ?, tags = ?, avatar = ?, updated_at = ? WHERE user_id = ?",
+      args: [slug, displayName, description, JSON.stringify(tags), avatar, now, userId],
     });
   } else {
     stmts.push({
-      sql: "INSERT INTO profiles (user_id, slug, display_name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      args: [userId, slug, displayName, description, JSON.stringify(tags), now, now],
+      sql: "INSERT INTO profiles (user_id, slug, display_name, description, tags, avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [userId, slug, displayName, description, JSON.stringify(tags), avatar, now, now],
     });
   }
   stmts.push({ sql: "DELETE FROM links WHERE user_id = ?", args: [userId] });
   cleanLinks.forEach((l, i) => {
     stmts.push({
-      sql: "INSERT INTO links (id, user_id, url, title, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      args: [l.id, userId, l.url, l.title, i, now, now],
+      sql: "INSERT INTO links (id, user_id, url, title, description, favicon, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [l.id, userId, l.url, l.title, l.desc, l.favicon, i, now, now],
+    });
+  });
+  stmts.push({ sql: "DELETE FROM contacts WHERE user_id = ?", args: [userId] });
+  cleanContacts.forEach((c, i) => {
+    stmts.push({
+      sql: "INSERT INTO contacts (id, user_id, kind, label, value, href, icon, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [c.id, userId, c.kind, c.label, c.value, c.href, c.icon, i, now, now],
     });
   });
   await atomic(stmts);
@@ -150,6 +249,7 @@ export async function deleteAccountCascade(userId: string, slug: string | null):
   await atomic([
     { sql: "DELETE FROM widgets WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM links WHERE user_id = ?", args: [userId] },
+    { sql: "DELETE FROM contacts WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM profiles WHERE user_id = ?", args: [userId] },
     { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
   ]);

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { fetchAdminOverview } from "@/lib/profiles";
+import { getAiConfigForAdmin } from "@/lib/admin-config";
+import { AdminAiForm } from "@/components/admin/admin-ai-form";
 import { Mark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +33,10 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 export default async function AdminPage() {
-  const overview = await fetchAdminOverview();
+  const [overview, aiConfig] = await Promise.all([
+    fetchAdminOverview(),
+    getAiConfigForAdmin(),
+  ]);
 
   // Fill the 14-day chart with zeroes for gap days.
   const days: { day: string; count: number }[] = [];
@@ -107,6 +112,9 @@ export default async function AdminPage() {
             <span>{days[days.length - 1]?.day.slice(5)}</span>
           </div>
         </section>
+
+        {/* AI widget agent */}
+        <AdminAiForm initial={aiConfig} />
 
         {/* users table */}
         <section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

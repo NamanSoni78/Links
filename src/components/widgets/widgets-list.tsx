@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, Loader2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { Copy, Loader2, Pencil, Plus, Share2, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { WidgetCard, WidgetAnimationStyles } from "@/components/widgets/widget-card";
-import { WIDGET_LIMITS, type WidgetData } from "@/lib/widgets";
+import { AiCreateDialog } from "@/components/widgets/ai-create-dialog";
+import { WIDGET_LIMITS, type WidgetData, type WidgetProfileContext } from "@/lib/widgets";
 import { cn } from "@/lib/utils";
 
 export interface ClientWidget {
@@ -39,13 +40,26 @@ function timeAgo(ts: number): string {
 }
 
 /** The dashboard "Widgets" screen — grid of live thumbnails with
- *  create / duplicate / delete, plus a friendly empty state. */
-export function WidgetsList({ initial, limit }: { initial: ClientWidget[]; limit: number }) {
+ *  create (manual or AI), duplicate / delete, plus a friendly empty state. */
+export function WidgetsList({
+  initial,
+  limit,
+  username,
+  aiVisible,
+  profile,
+}: {
+  initial: ClientWidget[];
+  limit: number;
+  username: string | null;
+  aiVisible: boolean;
+  profile: WidgetProfileContext;
+}) {
   const router = useRouter();
   const [widgets, setWidgets] = useState<ClientWidget[]>(initial);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteFor, setDeleteFor] = useState<ClientWidget | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const count = widgets.length;
   const full = count >= limit;
@@ -120,11 +134,22 @@ export function WidgetsList({ initial, limit }: { initial: ClientWidget[]; limit
               : `${count} of ${limit} used · embeds update automatically when you save`}
           </p>
         </div>
-        <Button onClick={create} disabled={creating || full} size="sm">
-          {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          New widget
-        </Button>
+        <div className="flex items-center gap-2">
+          {aiVisible && (
+            <Button variant="outline" size="sm" onClick={() => setAiOpen(true)} disabled={full}>
+              <Sparkles className="size-4 text-brand" />
+              New with AI
+            </Button>
+          )}
+          <Button onClick={create} disabled={creating || full} size="sm">
+            {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+            New widget
+          </Button>
+        </div>
       </div>
+
+      {/* the AI dialog itself */}
+      <AiCreateDialog open={aiOpen} onOpenChange={setAiOpen} profile={profile} full={full} />
 
       {count === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/25 px-6 py-14 text-center">
@@ -133,13 +158,21 @@ export function WidgetsList({ initial, limit }: { initial: ClientWidget[]; limit
           </div>
           <h2 className="mt-4 text-[16px] font-semibold text-foreground">Your first widget</h2>
           <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-            A little card you design here — text, colors, fonts, an image, even motion —
-            then paste into any README or website with one link.
+            A little card you design here — text, your sites, your contacts, colors,
+            fonts, even motion — then paste into any README or website with one link.
           </p>
-          <Button onClick={create} disabled={creating} className="mt-5">
-            {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            Create a widget
-          </Button>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={create} disabled={creating}>
+              {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Make it manually
+            </Button>
+            {aiVisible && (
+              <Button variant="outline" onClick={() => setAiOpen(true)}>
+                <Sparkles className="size-4 text-brand" />
+                Make it with AI
+              </Button>
+            )}
+          </div>
         </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -163,13 +196,13 @@ export function WidgetsList({ initial, limit }: { initial: ClientWidget[]; limit
                   <div className="pointer-events-none mt-4 w-[420px] origin-top scale-[0.6]">
                     {/* flatLinks: card sits inside this <Link> — nested <a> would
                         be invalid HTML and break hydration */}
-                    <WidgetCard data={w.data} flatLinks />
+                    <WidgetCard data={w.data} flatLinks profile={profile} />
                   </div>
                 </div>
                 <div className="px-3.5 py-3">
                   <p className="truncate text-[13.5px] font-medium text-foreground">{w.name}</p>
                   <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
-                    /w/{w.slug} ·{" "}
+                    /{username ?? "you"}/{w.slug} ·{" "}
                     {/* relative time differs server/client across second boundaries —
                         suppressHydrationWarning keeps React happy and shows server text */}
                     <time dateTime={new Date(w.updatedAt).toISOString()} suppressHydrationWarning>
@@ -181,7 +214,7 @@ export function WidgetsList({ initial, limit }: { initial: ClientWidget[]; limit
 
               <div className="flex items-center justify-between border-t border-border/70 px-2.5 py-2">
                 <a
-                  href={`/w/${w.slug}`}
+                  href={`/${username ?? "you"}/${w.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="rounded-md px-2 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

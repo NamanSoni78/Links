@@ -139,6 +139,11 @@ export default function LandingPage() {
             name: SITE.name,
             url: SITE.url,
             description: SITE.description,
+            creator: {
+              "@type": "Person",
+              name: SITE.creator,
+              url: SITE.creatorUrl,
+            },
           }).replace(/</g, "\\u003c"),
         }}
       />

@@ -36,6 +36,21 @@ try {
   for (const stmt of statements) {
     await db.execute(stmt);
   }
+
+  // ── upgrade older databases: add columns that arrived after v1 ──
+  const ensureColumns = [
+    ["profiles", "avatar", "ALTER TABLE profiles ADD COLUMN avatar TEXT NOT NULL DEFAULT ''"],
+    ["links", "description", "ALTER TABLE links ADD COLUMN description TEXT NOT NULL DEFAULT ''"],
+    ["links", "favicon", "ALTER TABLE links ADD COLUMN favicon TEXT NOT NULL DEFAULT ''"],
+  ];
+  for (const [table, column, ddl] of ensureColumns) {
+    const cols = await db.execute(`PRAGMA table_info(${table})`);
+    if (!cols.rows.some((r) => r.name === column)) {
+      await db.execute(ddl);
+      console.log(`  + ${table}.${column} added`);
+    }
+  }
+
   const tables = await db.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
   );
