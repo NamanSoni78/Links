@@ -82,11 +82,11 @@ CREATE TABLE IF NOT EXISTS admin_config (
 );
 
 -- ─────────────────────────────────────────────────────────────
--- Upgrading an older database? The CREATE statements above only
--- build missing tables — existing tables keep their old columns.
--- scripts/init-db.mjs (and the Colab notebook) add the columns below
--- automatically when they're missing:
---   ALTER TABLE profiles ADD COLUMN avatar   TEXT NOT NULL DEFAULT '';
---   ALTER TABLE links     ADD COLUMN description TEXT NOT NULL DEFAULT '';
---   ALTER TABLE links     ADD COLUMN favicon TEXT NOT NULL DEFAULT '';
+-- Upgrading an older database? CREATE TABLE IF NOT EXISTS only
+-- builds missing tables — existing tables keep their old columns.
+-- Three layers add the columns automatically:
+--   1. the Colab notebook (turso-setup.ipynb), cell 3 — ALTERs
+--   2. scripts/init-db.mjs — ensureColumns block
+--   3. src/lib/db.ts — runtime self-heal on first query
+-- (links.description, links.favicon, profiles.avatar, …)
 -- ─────────────────────────────────────────────────────────────

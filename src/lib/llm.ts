@@ -45,7 +45,10 @@ export async function llmChat(
     return { ok: false, error: "The AI agent isn't configured yet." };
   }
 
-  const maxTokens = opts.maxTokens ?? 1400;
+  // Floor of 16: OpenAI-compatible providers reject token caps below 16
+  // ("Invalid max_output_tokens ... Expected a value >= 16") — hard 400s that
+  // the fallback chain can't rescue. No legit chat call needs fewer.
+  const maxTokens = Math.max(16, opts.maxTokens ?? 1400);
   const temperature = opts.temperature ?? 0.7;
   const errors: string[] = [];
 

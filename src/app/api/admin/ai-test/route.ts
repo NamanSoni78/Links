@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
       { role: "system", content: "Reply with the single word: OK" },
       { role: "user", content: "ping" },
     ],
-    { maxTokens: 10, temperature: 0 }
+    // 32, not 10: OpenAI-compatible providers (incl. gpt-5/6-class models)
+    // reject token caps below 16 with a 400. 32 stays cheap but clears every
+    // known floor, including reasoning models that burn a few hidden tokens.
+    { maxTokens: 32, temperature: 0 }
   );
 
   if (!result.ok) return fail(result.error, result.status ?? 502);
