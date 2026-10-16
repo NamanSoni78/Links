@@ -176,7 +176,7 @@ export function renderWidgetSvg(data: WidgetData, opts: RenderWidgetSvgOpts = {}
     let baseline = y + typography.titleSize * 0.82;
     for (const line of titleLines) {
       body.push(
-        `<text x="${centered ? W / 2 : PAD}" y="${round(baseline)}" text-anchor="${centered ? "middle" : "start"} fill="${style.textColor}" font-family="${esc(font.stack)}" font-size="${typography.titleSize}" font-weight="${typography.bold ? 700 : 500}"${typography.uppercase ? ' letter-spacing="0.6"' : ""}>${esc(line)}</text>`
+        `<text x="${centered ? W / 2 : PAD}" y="${round(baseline)}" text-anchor="${centered ? "middle" : "start"}" fill="${style.textColor}" font-family="${esc(font.stack)}" font-size="${typography.titleSize}" font-weight="${typography.bold ? 700 : 500}"${typography.uppercase ? ' letter-spacing="0.6"' : ""}>${esc(line)}</text>`
       );
       baseline += typography.titleSize * 1.18;
     }
